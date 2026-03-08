@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Road Trip Planner</title>
+<meta name="theme-color" content="#0f1117" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Road Trip" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #181a20; border-bottom: 1px solid #2a2d36; flex-shrink: 0; gap: 8px; flex-wrap: wrap; }
+  .topbar h1 { font-size: 15px; font-weight: 600; color: #f0f0f0; white-space: nowrap; }
+  .topbar-controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .topbar-controls label { font-size: 11px; color: #999; }
+  .topbar-controls input[type=number] { width: 50px; padding: 3px 5px; background: #23262f; border: 1px solid #3a3d46; border-radius: 4px; color: #e0e0e0; font-size: 11px; text-align: center; }
+  .btn { padding: 4px 10px; font-size: 11px; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; transition: background 0.15s; white-space: nowrap; }
+  .btn-danger { background: #d9534f; color: #fff; }
+  .btn-danger:hover { background: #c9302c; }
+  .btn-secondary { background: #3a3d46; color: #ccc; }
+  .btn-secondary:hover { background: #4a4d56; }
+  .btn-primary { background: #4a8cff; color: #fff; }
+  .btn-primary:hover { background: #3a7cef; }
+  .btn-success { background: #22c55e; color: #fff; }
+  .btn-success:hover { background: #1aad50; }
+
+  .search-bar { display: flex; gap: 6px; padding: 6px 16px; background: #181a20; border-bottom: 1px solid #2a2d36; flex-shrink: 0; align-items: center; }
+  .search-bar input[type=text] { flex: 1; padding: 6px 10px; background: #23262f; border: 1px solid #3a3d46; border-radius: 5px; color: #e0e0e0; font-size: 13px; font-family: inherit; }
+  .search-bar input[type=text]:focus { border-color: #4a8cff; outline: none; }
+  .search-bar input[type=text]::placeholder { color: #666; }
+  .search-results { position: absolute; top: 100%; left: 0; right: 0; background: #23262f; border: 1px solid #3a3d46; border-radius: 0 0 5px 5px; z-index: 2000; max-height: 200px; overflow-y: auto; display: none; }
+  .search-results .sr-item { padding: 8px 12px; font-size: 12px; cursor: pointer; border-bottom: 1px solid #2a2d36; }
+  .search-results .sr-item:hover { background: #2e3240; }
+  .search-results .sr-item:last-child { border-bottom: none; }
+  .search-wrap { position: relative; flex: 1; display: flex; }
+  .search-wrap input { width: 100%; }
+  .search-spinner { display: none; color: #4a8cff; font-size: 12px; }
+
+  .trip-bar { display: flex; gap: 6px; padding: 6px 16px; background: #14161c; border-bottom: 1px solid #2a2d36; flex-shrink: 0; align-items: center; flex-wrap: wrap; }
+  .trip-bar select { padding: 4px 8px; background: #23262f; border: 1px solid #3a3d46; border-radius: 4px; color: #e0e0e0; font-size: 12px; font-family: inherit; max-width: 220px; }
+  .trip-bar select:focus { border-color: #4a8cff; outline: none; }
+  .trip-name-input { padding: 4px 8px; background: #23262f; border: 1px solid #3a3d46; border-radius: 4px; color: #e0e0e0; font-size: 12px; font-family: inherit; width: 180px; }
+  .trip-name-input:focus { border-color: #4a8cff; outline: none; }
+  .trip-bar .sep { width: 1px; height: 20px; background: #2a2d36; margin: 0 4px; }
+
+  #map { flex: 1 1 55%; min-height: 180px; z-index: 1; }
+
+  .summary-bar { display: flex; gap: 20px; padding: 6px 16px; background: #1c1e26; border-top: 1px solid #2a2d36; border-bottom: 1px solid #2a2d36; flex-shrink: 0; font-size: 12px; }
+  .summary-item { display: flex; gap: 5px; align-items: center; }
+  .summary-label { color: #888; }
+  .summary-value { color: #4a8cff; font-weight: 600; }
+
+  .table-panel { flex: 1 1 38%; overflow-y: auto; background: #13151b; }
+  .table-panel table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .table-panel thead th { position: sticky; top: 0; background: #1c1e26; padding: 6px 8px; text-align: left; font-weight: 600; color: #aaa; border-bottom: 1px solid #2a2d36; white-space: nowrap; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .table-panel tbody td { padding: 5px 8px; border-bottom: 1px solid #1e2028; vertical-align: middle; }
+  .table-panel tbody tr:hover { background: #1a1c24; }
+  .stop-number { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: #4a8cff; color: #fff; font-weight: 700; font-size: 10px; }
+  .stop-name-input { background: transparent; border: 1px solid transparent; color: #e0e0e0; padding: 2px 4px; border-radius: 3px; width: 100%; font-size: 12px; font-family: inherit; }
+  .stop-name-input:hover { border-color: #3a3d46; }
+  .stop-name-input:focus { border-color: #4a8cff; outline: none; background: #23262f; }
+  .coords { color: #666; font-size: 10px; font-family: 'SF Mono', 'Menlo', monospace; }
+  .leg-value { color: #e0e0e0; }
+  .cum-value { color: #4a8cff; font-weight: 500; }
+  .remove-btn { background: none; border: none; color: #666; cursor: pointer; font-size: 13px; padding: 2px 5px; border-radius: 3px; }
+  .remove-btn:hover { color: #d9534f; background: #2a1a1a; }
+  .move-btn { background: none; border: none; color: #555; cursor: pointer; font-size: 11px; padding: 1px 3px; border-radius: 3px; line-height: 1; }
+  .move-btn:hover { color: #4a8cff; background: #1a2a3a; }
+  .move-btn:disabled { opacity: 0.2; cursor: default; }
+  .move-controls { display: flex; flex-direction: column; gap: 0; }
+  .empty-state { text-align: center; padding: 30px 20px; color: #555; font-size: 13px; }
+  .empty-state span { font-size: 24px; display: block; margin-bottom: 8px; }
+
+  .numbered-marker { background: #4a8cff; color: #fff; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); font-family: -apple-system, system-ui, sans-serif; }
+  .numbered-marker.start { background: #22c55e; }
+  .numbered-marker.end { background: #ef4444; }
+
+  .hint { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 1000; background: rgba(0,0,0,0.7); color: #ccc; padding: 5px 12px; border-radius: 20px; font-size: 11px; pointer-events: none; backdrop-filter: blur(4px); }
+
+  .toast { position: fixed; bottom: 20px; right: 20px; background: #22c55e; color: #fff; padding: 8px 16px; border-radius: 6px; font-size: 12px; font-weight: 500; z-index: 9999; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+
+  /* ── Mobile elements (hidden on desktop) ── */
+  .mobile-nav { display: none; }
+  .menu-overlay { display: none; }
+  .menu-backdrop { display: none; }
+  .mobile-stops { display: none; }
+
+  /* ══════════════════════════════════════ */
+  /*  MOBILE LAYOUT (≤768px)              */
+  /* ══════════════════════════════════════ */
+  @media (max-width: 768px) {
+    body { overflow: hidden; }
+
+    /* Hide desktop bars */
+    .topbar, .trip-bar { display: none !important; }
+
+    /* Search bar: floating on map */
+    .search-bar {
+      position: absolute; top: 0; left: 0; right: 0; z-index: 1100;
+      background: rgba(24,26,32,0.92); backdrop-filter: blur(8px);
+      padding: 10px 12px; border-bottom: 1px solid #2a2d36;
+    }
+    .search-bar span:first-child { display: none; }
+    .search-bar input[type=text] { font-size: 16px; padding: 10px 12px; border-radius: 8px; }
+    .search-results .sr-item { padding: 14px 12px; font-size: 14px; min-height: 44px; }
+
+    /* Map: full area */
+    #map { flex: 1 1 100%; min-height: 0; }
+    .hint { bottom: 60px; font-size: 12px; }
+
+    /* Summary bar */
+    .summary-bar { padding: 8px 12px; gap: 12px; font-size: 13px; }
+
+    /* Hide desktop table panel */
+    .table-panel { display: none !important; }
+
+    /* ── Mobile stops (card layout) ── */
+    .mobile-stops {
+      flex: 1 1 100%; overflow-y: auto; background: #13151b;
+      padding: 8px 12px 70px 12px;
+    }
+    .mobile-stops.active { display: block; }
+    .mobile-stops .empty-state { padding: 40px 20px; font-size: 14px; }
+    .mobile-stops .empty-state span { font-size: 32px; }
+
+    .stop-card {
+      background: #1c1e26; border-radius: 10px; padding: 14px;
+      margin-bottom: 8px; border: 1px solid #2a2d36;
+    }
+    .stop-card-header {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+    }
+    .stop-card .stop-number {
+      width: 28px; height: 28px; font-size: 13px; flex-shrink: 0;
+    }
+    .stop-card .stop-name-input {
+      font-size: 15px; padding: 6px 8px; flex: 1; min-width: 0;
+      background: #23262f; border: 1px solid #3a3d46; border-radius: 6px;
+    }
+    .stop-card-stats {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px;
+      font-size: 12px; padding: 0 4px;
+    }
+    .stop-card-stat { display: flex; justify-content: space-between; }
+    .stop-card-stat .label { color: #888; }
+    .stop-card-stat .value { color: #e0e0e0; }
+    .stop-card-stat .value.cum { color: #4a8cff; font-weight: 500; }
+    .stop-card-actions {
+      display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end;
+      align-items: center;
+    }
+    .stop-card-actions .move-btn {
+      font-size: 18px; padding: 6px 12px; min-width: 44px; min-height: 44px;
+      display: flex; align-items: center; justify-content: center;
+      background: #23262f; border-radius: 6px;
+    }
+    .stop-card-actions .remove-btn {
+      font-size: 13px; padding: 8px 14px; min-height: 44px;
+      background: #2a1a1a; color: #d9534f; border-radius: 6px;
+      display: flex; align-items: center; gap: 4px;
+    }
+
+    /* ── Tab visibility ── */
+    .search-bar { display: none; }
+    body.tab-map .search-bar { display: flex !important; }
+    body.tab-map #map { display: block; }
+    body.tab-map .mobile-stops { display: none !important; }
+    body.tab-map .summary-bar { display: none; }
+    body.tab-map .hint { display: block; }
+
+    body.tab-list #map { display: none !important; }
+    body.tab-list .mobile-stops { display: block !important; }
+    body.tab-list .summary-bar { display: flex; }
+    body.tab-list .hint { display: none !important; }
+    body.tab-list .search-bar { display: none !important; }
+
+    /* ── Bottom navigation bar ── */
+    .mobile-nav {
+      display: flex !important; position: fixed; bottom: 0; left: 0; right: 0;
+      background: #181a20; border-top: 1px solid #2a2d36; z-index: 2000;
+      padding: 6px 0; padding-bottom: max(6px, env(safe-area-inset-bottom));
+    }
+    .mobile-nav button {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      gap: 2px; background: none; border: none; color: #666;
+      font-size: 10px; font-weight: 500; padding: 6px 0;
+      font-family: inherit; min-height: 44px; justify-content: center;
+    }
+    .mobile-nav button .nav-icon { font-size: 20px; line-height: 1; }
+    .mobile-nav button.active { color: #4a8cff; }
+
+    /* ── Hamburger menu overlay ── */
+    .menu-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2500;
+    }
+    .menu-backdrop.active { display: block; }
+    .menu-overlay {
+      position: fixed; top: 0; right: 0; bottom: 0; width: 280px;
+      background: #181a20; z-index: 3000; padding: 20px 16px;
+      overflow-y: auto; transform: translateX(100%);
+      transition: transform 0.25s ease;
+      padding-bottom: max(20px, env(safe-area-inset-bottom));
+    }
+    .menu-overlay.active { display: block; transform: translateX(0); }
+    .menu-overlay h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; color: #f0f0f0; }
+    .menu-section { margin-bottom: 20px; }
+    .menu-section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #666; margin-bottom: 8px; font-weight: 600; }
+    .menu-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .menu-row label { font-size: 13px; color: #aaa; min-width: 60px; }
+    .menu-row input[type=number] {
+      width: 70px; padding: 10px 8px; background: #23262f; border: 1px solid #3a3d46;
+      border-radius: 6px; color: #e0e0e0; font-size: 15px; text-align: center;
+      font-family: inherit; min-height: 44px;
+    }
+    .menu-row span { font-size: 13px; color: #888; }
+    .menu-overlay .menu-btn {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      width: 100%; padding: 12px; font-size: 14px; border: none; border-radius: 8px;
+      font-weight: 500; font-family: inherit; margin-bottom: 8px; min-height: 44px;
+    }
+    .menu-overlay .menu-btn.primary { background: #4a8cff; color: #fff; }
+    .menu-overlay .menu-btn.success { background: #22c55e; color: #fff; }
+    .menu-overlay .menu-btn.danger { background: #d9534f; color: #fff; }
+    .menu-overlay .menu-btn.secondary { background: #3a3d46; color: #ccc; }
+    .menu-overlay .trip-name-input {
+      width: 100%; padding: 10px 12px; font-size: 15px; border-radius: 6px;
+      min-height: 44px;
+    }
+    .menu-overlay select {
+      width: 100%; padding: 10px 12px; background: #23262f; border: 1px solid #3a3d46;
+      border-radius: 6px; color: #e0e0e0; font-size: 14px; font-family: inherit;
+      min-height: 44px; margin-bottom: 8px;
+    }
+    .menu-close {
+      position: absolute; top: 12px; right: 12px; background: none; border: none;
+      color: #888; font-size: 22px; min-width: 44px; min-height: 44px;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    /* Toast position above bottom nav */
+    .toast { bottom: 70px; right: 12px; left: 12px; text-align: center; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>🗺️ Road Trip Planner</h1>
+  <div class="topbar-controls">
+    <label>Speed</label>
+    <input type="number" id="avgSpeed" value="55" min="10" max="120" step="5" />
+    <label>mph</label>
+    <label style="margin-left:4px;">Road×</label>
+    <input type="number" id="roadFactor" value="1.30" min="1.0" max="2.0" step="0.05" />
+    <button class="btn btn-secondary" onclick="undoLast()" title="Remove last stop">↩ Undo</button>
+    <button class="btn btn-danger" onclick="clearAll()">✕ Clear</button>
+  </div>
+</div>
+
+<div class="trip-bar">
+  <input class="trip-name-input" id="tripName" placeholder="Trip name…" value="Untitled Trip" />
+  <button class="btn btn-success" onclick="saveTrip()">💾 Save</button>
+  <div class="sep"></div>
+  <select id="tripSelect"><option value="">— Load a saved trip —</option></select>
+  <button class="btn btn-primary" onclick="loadSelectedTrip()">📂 Load</button>
+  <button class="btn btn-danger" onclick="deleteSelectedTrip()">🗑</button>
+  <div class="sep"></div>
+  <button class="btn btn-secondary" onclick="exportTrip()">⬇ Export</button>
+  <label class="btn btn-secondary" style="cursor:pointer;">⬆ Import<input type="file" accept=".json" onchange="importTrip(event)" style="display:none;" /></label>
+</div>
+
+<div class="search-bar">
+  <span style="font-size:12px;color:#888;">📍 Add by address:</span>
+  <div class="search-wrap">
+    <input type="text" id="addressInput" placeholder="Search for an address or place name…" />
+    <div class="search-results" id="searchResults"></div>
+  </div>
+  <span class="search-spinner" id="searchSpinner">⏳</span>
+</div>
+
+<div id="map"></div>
+<div class="hint" id="hint">Click the map or search an address to add stops</div>
+
+<div class="summary-bar">
+  <div class="summary-item"><span class="summary-label">Stops:</span><span class="summary-value" id="sumStops">0</span></div>
+  <div class="summary-item"><span class="summary-label">Total Distance:</span><span class="summary-value" id="sumDist">—</span></div>
+  <div class="summary-item"><span class="summary-label">Total Drive Time:</span><span class="summary-value" id="sumTime">—</span></div>
+</div>
+
+<!-- ── Mobile stops (card view) ── -->
+<div class="mobile-stops" id="mobileStops">
+  <div class="empty-state" id="mobileEmptyState">
+    <span>📍</span>
+    Tap the map to add your first stop
+  </div>
+</div>
+
+<div class="table-panel">
+  <table>
+    <thead>
+      <tr>
+        <th style="width:26px"></th>
+        <th>#</th>
+        <th>Stop Name</th>
+        <th>Coordinates</th>
+        <th>Leg Dist</th>
+        <th>Leg Time</th>
+        <th>Cum. Dist</th>
+        <th>Cum. Time</th>
+        <th style="width:26px"></th>
+      </tr>
+    </thead>
+    <tbody id="stopsBody"></tbody>
+  </table>
+  <div class="empty-state" id="emptyState">
+    <span>📍</span>
+    Click the map or search an address to add your first stop
+  </div>
+</div>
+
+<!-- ── Mobile bottom nav ── -->
+<div class="mobile-nav" id="mobileNav">
+  <button class="active" onclick="switchTab('map')" id="navMap">
+    <span class="nav-icon">🗺️</span>Map
+  </button>
+  <button onclick="switchTab('list')" id="navList">
+    <span class="nav-icon">📋</span>List
+  </button>
+  <button onclick="toggleMenu()" id="navMenu">
+    <span class="nav-icon">☰</span>Menu
+  </button>
+</div>
+
+<!-- ── Mobile hamburger menu ── -->
+<div class="menu-backdrop" id="menuBackdrop" onclick="toggleMenu()"></div>
+<div class="menu-overlay" id="menuOverlay">
+  <button class="menu-close" onclick="toggleMenu()">✕</button>
+  <h2>Settings</h2>
+
+  <div class="menu-section">
+    <div class="menu-section-title">Trip</div>
+    <input class="trip-name-input" id="mobileTripName" placeholder="Trip name…" value="Untitled Trip" />
+    <div style="height:8px;"></div>
+    <button class="menu-btn success" onclick="saveTrip(); toggleMenu();">💾 Save Trip</button>
+    <select id="mobileTripSelect"><option value="">— Load a saved trip —</option></select>
+    <div style="display:flex; gap:8px;">
+      <button class="menu-btn primary" style="flex:1;" onclick="loadSelectedTrip(); toggleMenu();">📂 Load</button>
+      <button class="menu-btn danger" style="flex:0 0 50px;" onclick="deleteSelectedTrip();">🗑</button>
+    </div>
+  </div>
+
+  <div class="menu-section">
+    <div class="menu-section-title">Route Settings</div>
+    <div class="menu-row">
+      <label>Speed</label>
+      <input type="number" id="mobileAvgSpeed" value="55" min="10" max="120" step="5" />
+      <span>mph</span>
+    </div>
+    <div class="menu-row">
+      <label>Road ×</label>
+      <input type="number" id="mobileRoadFactor" value="1.30" min="1.0" max="2.0" step="0.05" />
+    </div>
+  </div>
+
+  <div class="menu-section">
+    <div class="menu-section-title">Actions</div>
+    <button class="menu-btn secondary" onclick="undoLast(); toggleMenu();">↩ Undo Last Stop</button>
+    <button class="menu-btn danger" onclick="clearAll(); toggleMenu();">✕ Clear All Stops</button>
+  </div>
+
+  <div class="menu-section">
+    <div class="menu-section-title">Import / Export</div>
+    <button class="menu-btn secondary" onclick="exportTrip(); toggleMenu();">⬇ Export JSON</button>
+    <label class="menu-btn secondary" style="cursor:pointer; text-align:center;">
+      ⬆ Import JSON
+      <input type="file" accept=".json" onchange="importTrip(event); toggleMenu();" style="display:none;" />
+    </label>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──
+let stops = [];
+let polyline = null;
+let avgSpeed = 55;
+let roadFactor = 1.30;
+let nextId = 1;
+let searchTimeout = null;
+let savedTrips = {};
+
+// ── Map init ──
+const map = L.map('map', { zoomControl: true }).setView([39.5, -98.35], 5);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors', maxZoom: 19
+}).addTo(map);
+map.on('click', (e) => addStop(e.latlng.lat, e.latlng.lng));
+
+document.getElementById('avgSpeed').addEventListener('change', (e) => { avgSpeed = parseFloat(e.target.value) || 55; renderTable(); });
+document.getElementById('roadFactor').addEventListener('change', (e) => { roadFactor = parseFloat(e.target.value) || 1.3; renderTable(); updatePolyline(); });
+
+// ══════════════════════════════════════
+//  ADDRESS SEARCH (Nominatim)
+// ══════════════════════════════════════
+const addressInput = document.getElementById('addressInput');
+const searchResults = document.getElementById('searchResults');
+const searchSpinner = document.getElementById('searchSpinner');
+
+addressInput.addEventListener('input', () => {
+  clearTimeout(searchTimeout);
+  const q = addressInput.value.trim();
+  if (q.length < 3) { searchResults.style.display = 'none'; return; }
+  searchTimeout = setTimeout(() => geocodeSearch(q), 400);
+});
+addressInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { clearTimeout(searchTimeout); const q = addressInput.value.trim(); if (q.length >= 2) geocodeSearch(q); }
+});
+document.addEventListener('click', (e) => { if (!e.target.closest('.search-wrap')) searchResults.style.display = 'none'; });
+
+function geocodeSearch(query) {
+  searchSpinner.style.display = 'inline';
+  fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=6&addressdetails=1`)
+    .then(r => r.json())
+    .then(results => {
+      searchSpinner.style.display = 'none';
+      if (!results.length) {
+        searchResults.innerHTML = '<div class="sr-item" style="color:#888;">No results found</div>';
+        searchResults.style.display = 'block'; return;
+      }
+      searchResults.innerHTML = results.map((r, i) => `<div class="sr-item" data-idx="${i}">${escHtml(r.display_name)}</div>`).join('');
+      searchResults.style.display = 'block';
+      searchResults.querySelectorAll('.sr-item').forEach((el, i) => {
+        el.addEventListener('click', () => {
+          const r = results[i];
+          addStop(parseFloat(r.lat), parseFloat(r.lon), buildShortName(r));
+          addressInput.value = '';
+          searchResults.style.display = 'none';
+        });
+      });
+    }).catch(() => { searchSpinner.style.display = 'none'; });
+}
+
+function buildShortName(result) {
+  const a = result.address || {};
+  const city = a.city || a.town || a.village || a.hamlet || '';
+  const state = a.state || '';
+  const specific = a.road || a.neighbourhood || a.suburb || '';
+  if (specific && city) return `${specific}, ${city}, ${state}`.replace(/, $/, '');
+  if (city && state) return `${city}, ${state}`;
+  return result.display_name?.split(',').slice(0, 3).join(',').trim() || '';
+}
+
+// ══════════════════════════════════════
+//  STOP MANAGEMENT
+// ══════════════════════════════════════
+function createMarkerIcon(index, total) {
+  let cls = 'numbered-marker';
+  if (total > 1 && index === 0) cls += ' start';
+  else if (total > 1 && index === total - 1) cls += ' end';
+  return L.divIcon({ className: '', html: `<div class="${cls}">${index + 1}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] });
+}
+
+function addStop(lat, lng, name) {
+  const id = nextId++;
+  const marker = L.marker([lat, lng], { draggable: true, icon: createMarkerIcon(stops.length, stops.length + 1) }).addTo(map);
+  const stop = { id, lat, lng, name: name || '', marker };
+  stops.push(stop);
+  marker.on('dragend', () => {
+    const pos = marker.getLatLng();
+    stop.lat = pos.lat; stop.lng = pos.lng; stop.name = '';
+    reverseGeocode(stop); updatePolyline(); renderTable();
+  });
+  if (!name) reverseGeocode(stop);
+  refreshMarkerIcons(); updatePolyline(); renderTable(); updateHint();
+  if (stops.length > 1) map.fitBounds(polyline.getBounds(), { padding: [40, 40] });
+}
+
+function removeStop(id) {
+  const idx = stops.findIndex(s => s.id === id);
+  if (idx === -1) return;
+  map.removeLayer(stops[idx].marker);
+  stops.splice(idx, 1);
+  refreshMarkerIcons(); updatePolyline(); renderTable(); updateHint();
+}
+
+function moveStop(id, direction) {
+  const idx = stops.findIndex(s => s.id === id);
+  const newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= stops.length) return;
+  [stops[idx], stops[newIdx]] = [stops[newIdx], stops[idx]];
+  refreshMarkerIcons(); updatePolyline(); renderTable();
+}
+
+function clearAll() {
+  stops.forEach(s => map.removeLayer(s.marker));
+  stops = [];
+  if (polyline) { map.removeLayer(polyline); polyline = null; }
+  renderTable(); updateHint();
+  map.setView([39.5, -98.35], 5);
+}
+
+function undoLast() { if (stops.length) removeStop(stops[stops.length - 1].id); }
+
+function refreshMarkerIcons() { stops.forEach((s, i) => s.marker.setIcon(createMarkerIcon(i, stops.length))); }
+
+function updatePolyline() {
+  if (polyline) map.removeLayer(polyline);
+  if (stops.length < 2) { polyline = null; return; }
+  polyline = L.polyline(stops.map(s => [s.lat, s.lng]), { color: '#4a8cff', weight: 3, opacity: 0.8, dashArray: '8 6' }).addTo(map);
+}
+
+function updateHint() {
+  const hint = document.getElementById('hint');
+  if (stops.length === 0) { hint.textContent = 'Click the map or search an address to add stops'; hint.style.display = ''; }
+  else if (stops.length === 1) { hint.textContent = 'Click again to add your next stop'; hint.style.display = ''; }
+  else { hint.style.display = 'none'; }
+}
+
+function reverseGeocode(stop) {
+  fetch(`https://nominatim.openstreetmap.org/reverse?lat=${stop.lat}&lon=${stop.lng}&format=json&zoom=10&addressdetails=1`)
+    .then(r => r.json())
+    .then(data => {
+      if (data?.address) {
+        const a = data.address;
+        const city = a.city || a.town || a.village || a.hamlet || a.county || '';
+        const state = a.state || '';
+        stop.name = city && state ? `${city}, ${state}` : (city || state || data.display_name?.split(',').slice(0, 2).join(',') || '');
+      }
+      renderTable();
+    }).catch(() => {});
+}
+
+// ══════════════════════════════════════
+//  CALCULATIONS
+// ══════════════════════════════════════
+function haversine(lat1, lng1, lat2, lng2) {
+  const R = 3958.8;
+  const dLat = (lat2 - lat1) * Math.PI / 180, dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+function formatDist(mi) { return mi < 1 ? `${(mi * 5280).toFixed(0)} ft` : `${mi.toFixed(1)} mi`; }
+function formatTime(h) {
+  if (h < 1 / 60) return '< 1 min';
+  const hr = Math.floor(h), m = Math.round((h - hr) * 60);
+  return hr === 0 ? `${m} min` : m === 0 ? `${hr}h` : `${hr}h ${m}m`;
+}
+
+// ══════════════════════════════════════
+//  TABLE RENDER
+// ══════════════════════════════════════
+function renderTable() {
+  const tbody = document.getElementById('stopsBody');
+  document.getElementById('emptyState').style.display = stops.length === 0 ? '' : 'none';
+  let cumDist = 0, cumTime = 0;
+
+  tbody.innerHTML = stops.map((stop, i) => {
+    let legDist = 0, legTime = 0;
+    if (i > 0) {
+      legDist = haversine(stops[i-1].lat, stops[i-1].lng, stop.lat, stop.lng) * roadFactor;
+      legTime = legDist / avgSpeed;
+    }
+    cumDist += legDist; cumTime += legTime;
+    return `<tr>
+      <td><div class="move-controls">
+        <button class="move-btn" onclick="moveStop(${stop.id},-1)" ${i===0?'disabled':''}>▲</button>
+        <button class="move-btn" onclick="moveStop(${stop.id},1)" ${i===stops.length-1?'disabled':''}>▼</button>
+      </div></td>
+      <td><span class="stop-number">${i+1}</span></td>
+      <td><input class="stop-name-input" value="${escHtml(stop.name||`Stop ${i+1}`)}" onchange="renameStop(${stop.id},this.value)" /></td>
+      <td><span class="coords">${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}</span></td>
+      <td class="leg-value">${i===0?'—':formatDist(legDist)}</td>
+      <td class="leg-value">${i===0?'—':formatTime(legTime)}</td>
+      <td class="cum-value">${i===0?'—':formatDist(cumDist)}</td>
+      <td class="cum-value">${i===0?'—':formatTime(cumTime)}</td>
+      <td><button class="remove-btn" onclick="removeStop(${stop.id})">✕</button></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('sumStops').textContent = stops.length;
+  document.getElementById('sumDist').textContent = stops.length > 1 ? formatDist(cumDist) : '—';
+  document.getElementById('sumTime').textContent = stops.length > 1 ? formatTime(cumTime) : '—';
+}
+
+function renameStop(id, v) { const s = stops.find(s => s.id === id); if (s) s.name = v; }
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ══════════════════════════════════════
+//  PERSISTENCE (localStorage)
+// ══════════════════════════════════════
+const STORE_KEY = 'roadtrip-saved-trips';
+
+function serializeTrip() {
+  return {
+    name: document.getElementById('tripName').value || 'Untitled Trip',
+    avgSpeed, roadFactor,
+    stops: stops.map(s => ({ lat: s.lat, lng: s.lng, name: s.name }))
+  };
+}
+
+function tripKey(name) { return 'trip:' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, ''); }
+
+function loadTripIndex() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    savedTrips = raw ? JSON.parse(raw) : {};
+  } catch { savedTrips = {}; }
+  refreshTripSelect();
+}
+
+function persistTripIndex() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(savedTrips)); } catch {}
+}
+
+function refreshTripSelect() {
+  const sel = document.getElementById('tripSelect');
+  const keys = Object.keys(savedTrips).sort((a, b) => savedTrips[a].name.localeCompare(savedTrips[b].name));
+  sel.innerHTML = '<option value="">— Load a saved trip —</option>' +
+    keys.map(k => `<option value="${escHtml(k)}">${escHtml(savedTrips[k].name)} (${savedTrips[k].stops.length} stops)</option>`).join('');
+}
+
+function saveTrip() {
+  const data = serializeTrip();
+  if (!data.stops.length) { showToast('Add stops before saving', '#d9534f'); return; }
+  const key = tripKey(data.name);
+  savedTrips[key] = data;
+  persistTripIndex();
+  refreshTripSelect();
+  document.getElementById('tripSelect').value = key;
+  showToast(`Saved "${data.name}"`);
+}
+
+function restoreTrip(data) {
+  stops.forEach(s => map.removeLayer(s.marker));
+  stops = [];
+  if (polyline) { map.removeLayer(polyline); polyline = null; }
+  document.getElementById('tripName').value = data.name;
+  avgSpeed = data.avgSpeed || 55; roadFactor = data.roadFactor || 1.3;
+  document.getElementById('avgSpeed').value = avgSpeed;
+  document.getElementById('roadFactor').value = roadFactor;
+  data.stops.forEach(s => addStop(s.lat, s.lng, s.name));
+}
+
+function loadSelectedTrip() {
+  const key = document.getElementById('tripSelect').value;
+  if (!key || !savedTrips[key]) return;
+  restoreTrip(savedTrips[key]);
+  showToast(`Loaded "${savedTrips[key].name}"`);
+}
+
+function deleteSelectedTrip() {
+  const key = document.getElementById('tripSelect').value;
+  if (!key || !savedTrips[key]) return;
+  const name = savedTrips[key].name;
+  if (!confirm(`Delete "${name}"?`)) return;
+  delete savedTrips[key];
+  persistTripIndex();
+  refreshTripSelect();
+  showToast(`Deleted "${name}"`);
+}
+
+// ── Export / Import (JSON files — always works) ──
+function exportTrip() {
+  const data = serializeTrip();
+  if (!data.stops.length) { showToast('Nothing to export', '#d9534f'); return; }
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (data.name || 'trip').replace(/[^a-z0-9]+/gi, '_') + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function importTrip(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!Array.isArray(data.stops)) { alert('Invalid trip file.'); return; }
+      restoreTrip(data);
+      showToast(`Imported "${data.name || 'trip'}"`);
+    } catch { alert('Could not parse file.'); }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+// ── Toast ──
+function showToast(msg, bg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = bg || '#22c55e';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// ══════════════════════════════════════
+//  MOBILE: Tab switching & menu
+// ══════════════════════════════════════
+let currentTab = 'map';
+
+function isMobile() { return window.matchMedia('(max-width: 768px)').matches; }
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.body.classList.remove('tab-map', 'tab-list');
+  document.body.classList.add('tab-' + tab);
+  document.getElementById('navMap').classList.toggle('active', tab === 'map');
+  document.getElementById('navList').classList.toggle('active', tab === 'list');
+  document.getElementById('navMenu').classList.remove('active');
+  if (tab === 'map') {
+    setTimeout(() => map.invalidateSize(), 50);
+  }
+}
+
+function toggleMenu() {
+  const overlay = document.getElementById('menuOverlay');
+  const backdrop = document.getElementById('menuBackdrop');
+  const isOpen = overlay.classList.contains('active');
+  overlay.classList.toggle('active', !isOpen);
+  backdrop.classList.toggle('active', !isOpen);
+}
+
+// Sync mobile ↔ desktop controls
+document.getElementById('mobileAvgSpeed').addEventListener('change', (e) => {
+  avgSpeed = parseFloat(e.target.value) || 55;
+  document.getElementById('avgSpeed').value = avgSpeed;
+  renderTable();
+});
+document.getElementById('mobileRoadFactor').addEventListener('change', (e) => {
+  roadFactor = parseFloat(e.target.value) || 1.3;
+  document.getElementById('roadFactor').value = roadFactor;
+  renderTable(); updatePolyline();
+});
+// Sync trip name
+document.getElementById('mobileTripName').addEventListener('input', (e) => {
+  document.getElementById('tripName').value = e.target.value;
+});
+document.getElementById('tripName').addEventListener('input', (e) => {
+  document.getElementById('mobileTripName').value = e.target.value;
+});
+
+// ══════════════════════════════════════
+//  MOBILE: Card-based stop rendering
+// ══════════════════════════════════════
+function renderMobileStops() {
+  const container = document.getElementById('mobileStops');
+  const emptyState = document.getElementById('mobileEmptyState');
+  if (!container) return;
+  emptyState.style.display = stops.length === 0 ? '' : 'none';
+
+  // Remove old cards
+  container.querySelectorAll('.stop-card').forEach(c => c.remove());
+
+  let cumDist = 0, cumTime = 0;
+  stops.forEach((stop, i) => {
+    let legDist = 0, legTime = 0;
+    if (i > 0) {
+      legDist = haversine(stops[i-1].lat, stops[i-1].lng, stop.lat, stop.lng) * roadFactor;
+      legTime = legDist / avgSpeed;
+    }
+    cumDist += legDist; cumTime += legTime;
+
+    const card = document.createElement('div');
+    card.className = 'stop-card';
+    card.innerHTML = `
+      <div class="stop-card-header">
+        <span class="stop-number">${i+1}</span>
+        <input class="stop-name-input" value="${escHtml(stop.name || 'Stop '+(i+1))}" onchange="renameStop(${stop.id},this.value)" />
+      </div>
+      ${i > 0 ? `<div class="stop-card-stats">
+        <div class="stop-card-stat"><span class="label">Leg</span><span class="value">${formatDist(legDist)}</span></div>
+        <div class="stop-card-stat"><span class="label">Time</span><span class="value">${formatTime(legTime)}</span></div>
+        <div class="stop-card-stat"><span class="label">Total</span><span class="value cum">${formatDist(cumDist)}</span></div>
+        <div class="stop-card-stat"><span class="label">Total</span><span class="value cum">${formatTime(cumTime)}</span></div>
+      </div>` : '<div style="font-size:12px;color:#666;padding:0 4px;">Starting point</div>'}
+      <div class="stop-card-actions">
+        <button class="move-btn" onclick="moveStop(${stop.id},-1)" ${i===0?'disabled':''}>▲</button>
+        <button class="move-btn" onclick="moveStop(${stop.id},1)" ${i===stops.length-1?'disabled':''}>▼</button>
+        <button class="remove-btn" onclick="removeStop(${stop.id})">✕ Remove</button>
+      </div>`;
+    container.appendChild(card);
+  });
+}
+
+// Override refreshTripSelect to also update mobile select
+const _origRefreshTripSelect = refreshTripSelect;
+refreshTripSelect = function() {
+  _origRefreshTripSelect();
+  const mobileSel = document.getElementById('mobileTripSelect');
+  if (mobileSel) mobileSel.innerHTML = document.getElementById('tripSelect').innerHTML;
+};
+
+// Override serializeTrip to read from mobile trip name if on mobile
+const _origSerializeTrip = serializeTrip;
+serializeTrip = function() {
+  if (isMobile()) {
+    document.getElementById('tripName').value = document.getElementById('mobileTripName').value;
+  }
+  return _origSerializeTrip();
+};
+
+// Override loadSelectedTrip/deleteSelectedTrip to use mobile select
+const _origLoadSelectedTrip = loadSelectedTrip;
+loadSelectedTrip = function() {
+  if (isMobile()) {
+    document.getElementById('tripSelect').value = document.getElementById('mobileTripSelect').value;
+  }
+  _origLoadSelectedTrip();
+  if (isMobile()) {
+    document.getElementById('mobileTripName').value = document.getElementById('tripName').value;
+    document.getElementById('mobileAvgSpeed').value = avgSpeed;
+    document.getElementById('mobileRoadFactor').value = roadFactor;
+  }
+};
+
+const _origDeleteSelectedTrip = deleteSelectedTrip;
+deleteSelectedTrip = function() {
+  if (isMobile()) {
+    document.getElementById('tripSelect').value = document.getElementById('mobileTripSelect').value;
+  }
+  _origDeleteSelectedTrip();
+};
+
+// Patch renderTable to also render mobile cards
+const _origRenderTable = renderTable;
+renderTable = function() {
+  _origRenderTable();
+  renderMobileStops();
+};
+
+// Also patch restoreTrip to sync mobile inputs
+const _origRestoreTrip = restoreTrip;
+restoreTrip = function(data) {
+  _origRestoreTrip(data);
+  document.getElementById('mobileTripName').value = data.name;
+  document.getElementById('mobileAvgSpeed').value = avgSpeed;
+  document.getElementById('mobileRoadFactor').value = roadFactor;
+};
+
+// ── Init ──
+// Set initial mobile tab
+if (isMobile()) {
+  document.body.classList.add('tab-map');
+}
+renderTable();
+loadTripIndex();
+
+// ── Register service worker ──
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
