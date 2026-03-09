@@ -4,19 +4,13 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Road Trip Planner</title>
-<meta name="theme-color" content="#0f1117" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="Road Trip" />
-<link rel="manifest" href="manifest.json" />
-<link rel="apple-touch-icon" href="icons/icon-192.png" />
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
-  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #181a20; border-bottom: 1px solid #2a2d36; flex-shrink: 0; gap: 8px; flex-wrap: wrap; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; padding-top: calc(env(safe-area-inset-top, 0px) + 8px); background: #181a20; border-bottom: 1px solid #2a2d36; flex-shrink: 0; gap: 8px; flex-wrap: wrap; }
   .topbar h1 { font-size: 15px; font-weight: 600; color: #f0f0f0; white-space: nowrap; }
   .topbar-controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
   .topbar-controls label { font-size: 11px; color: #999; }
@@ -262,6 +256,7 @@
     <input type="number" id="roadFactor" value="1.30" min="1.0" max="2.0" step="0.05" />
     <button class="btn btn-secondary" onclick="undoLast()" title="Remove last stop">↩ Undo</button>
     <button class="btn btn-danger" onclick="clearAll()">✕ Clear</button>
+    <button class="btn-toggle active" id="offlineToggle" onclick="toggleOfflineMode()" title="Toggle offline mode" style="font-size:10px;padding:2px 8px;border-radius:8px;font-weight:600;">Online</button>
   </div>
 </div>
 
@@ -595,9 +590,10 @@ function renameStop(id, v) { const s = stops.find(s => s.id === id); if (s) s.na
 function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 // ══════════════════════════════════════
-//  PERSISTENCE (localStorage)
+//  PERSISTENCE (window.storage or in-memory)
 // ══════════════════════════════════════
 const STORE_KEY = 'roadtrip-saved-trips';
+const hasStorage = typeof window.storage !== 'undefined' && window.storage?.get;
 
 function serializeTrip() {
   return {
@@ -609,16 +605,20 @@ function serializeTrip() {
 
 function tripKey(name) { return 'trip:' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, ''); }
 
-function loadTripIndex() {
-  try {
-    const raw = localStorage.getItem(STORE_KEY);
-    savedTrips = raw ? JSON.parse(raw) : {};
-  } catch { savedTrips = {}; }
+async function loadTripIndex() {
+  if (hasStorage) {
+    try {
+      const r = await window.storage.get(STORE_KEY);
+      savedTrips = r ? JSON.parse(r.value) : {};
+    } catch { savedTrips = {}; }
+  }
   refreshTripSelect();
 }
 
-function persistTripIndex() {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(savedTrips)); } catch {}
+async function persistTripIndex() {
+  if (hasStorage) {
+    try { await window.storage.set(STORE_KEY, JSON.stringify(savedTrips)); } catch {}
+  }
 }
 
 function refreshTripSelect() {
@@ -628,12 +628,12 @@ function refreshTripSelect() {
     keys.map(k => `<option value="${escHtml(k)}">${escHtml(savedTrips[k].name)} (${savedTrips[k].stops.length} stops)</option>`).join('');
 }
 
-function saveTrip() {
+async function saveTrip() {
   const data = serializeTrip();
   if (!data.stops.length) { showToast('Add stops before saving', '#d9534f'); return; }
   const key = tripKey(data.name);
   savedTrips[key] = data;
-  persistTripIndex();
+  await persistTripIndex();
   refreshTripSelect();
   document.getElementById('tripSelect').value = key;
   showToast(`Saved "${data.name}"`);
@@ -650,20 +650,20 @@ function restoreTrip(data) {
   data.stops.forEach(s => addStop(s.lat, s.lng, s.name));
 }
 
-function loadSelectedTrip() {
+async function loadSelectedTrip() {
   const key = document.getElementById('tripSelect').value;
   if (!key || !savedTrips[key]) return;
   restoreTrip(savedTrips[key]);
   showToast(`Loaded "${savedTrips[key].name}"`);
 }
 
-function deleteSelectedTrip() {
+async function deleteSelectedTrip() {
   const key = document.getElementById('tripSelect').value;
   if (!key || !savedTrips[key]) return;
   const name = savedTrips[key].name;
   if (!confirm(`Delete "${name}"?`)) return;
   delete savedTrips[key];
-  persistTripIndex();
+  await persistTripIndex();
   refreshTripSelect();
   showToast(`Deleted "${name}"`);
 }
@@ -813,11 +813,11 @@ serializeTrip = function() {
 
 // Override loadSelectedTrip/deleteSelectedTrip to use mobile select
 const _origLoadSelectedTrip = loadSelectedTrip;
-loadSelectedTrip = function() {
+loadSelectedTrip = async function() {
   if (isMobile()) {
     document.getElementById('tripSelect').value = document.getElementById('mobileTripSelect').value;
   }
-  _origLoadSelectedTrip();
+  await _origLoadSelectedTrip();
   if (isMobile()) {
     document.getElementById('mobileTripName').value = document.getElementById('tripName').value;
     document.getElementById('mobileAvgSpeed').value = avgSpeed;
@@ -826,11 +826,11 @@ loadSelectedTrip = function() {
 };
 
 const _origDeleteSelectedTrip = deleteSelectedTrip;
-deleteSelectedTrip = function() {
+deleteSelectedTrip = async function() {
   if (isMobile()) {
     document.getElementById('tripSelect').value = document.getElementById('mobileTripSelect').value;
   }
-  _origDeleteSelectedTrip();
+  await _origDeleteSelectedTrip();
 };
 
 // Patch renderTable to also render mobile cards
@@ -856,6 +856,31 @@ if (isMobile()) {
 }
 renderTable();
 loadTripIndex();
+
+// ── Offline mode toggle ──
+let isOfflineMode = false;
+function toggleOfflineMode() {
+  isOfflineMode = !isOfflineMode;
+  const toggle = document.getElementById('offlineToggle');
+  const input = document.getElementById('addressInput');
+  if (isOfflineMode) {
+    toggle.textContent = 'Offline';
+    toggle.style.background = '#d9534f';
+    toggle.style.color = '#fff';
+    toggle.classList.remove('active');
+    input.disabled = true;
+    input.placeholder = 'Search unavailable offline';
+    showToast('Offline mode enabled');
+  } else {
+    toggle.textContent = 'Online';
+    toggle.style.background = '';
+    toggle.style.color = '';
+    toggle.classList.add('active');
+    input.disabled = false;
+    input.placeholder = 'Search for an address or place name…';
+    showToast('Online mode restored');
+  }
+}
 
 // ── Register service worker ──
 if ('serviceWorker' in navigator) {
