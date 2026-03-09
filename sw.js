@@ -1,12 +1,10 @@
-const CACHE_NAME = 'roadtrip-v2';
+const CACHE_NAME = 'roadtrip-v3';
 const STATIC_ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './icons/icon-192.png',
-  './icons/icon-512.png',
-  'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
-  'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'
+  './icons/icon-512.png'
 ];
 
 // Install: cache static assets
